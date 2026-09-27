@@ -1,0 +1,57 @@
+name: Slack status
+description: Best-effort Slack status notification for Cascades workflows
+
+inputs:
+  channel:
+    description: Slack channel ID
+    required: false
+    default: ""
+  webhook-url:
+    description: Slack incoming webhook URL
+    required: false
+    default: ""
+  suffix:
+    description: Optional status suffix
+    required: false
+    default: ""
+  users-map:
+    description: Optional GitHub-to-Slack mapping retained for compatibility
+    required: false
+    default: ""
+  extra-text:
+    description: Optional extra message text
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Post workflow status
+      shell: bash
+      env:
+        SLACK_WEBHOOK_URL: ${{ inputs.webhook-url }}
+        SLACK_CHANNEL: ${{ inputs.channel }}
+        STATUS_SUFFIX: ${{ inputs.suffix }}
+        EXTRA_TEXT: ${{ inputs.extra-text }}
+      run: |
+        set -euo pipefail
+        if [[ -z "${SLACK_WEBHOOK_URL}" ]]; then
+          echo "Slack webhook is not configured; skipping notification."
+          exit 0
+        fi
+
+        status="${{ job.status }}"
+        text="[${status}] ${GITHUB_REPOSITORY} / ${GITHUB_WORKFLOW}"
+        if [[ -n "${STATUS_SUFFIX}" ]]; then
+          text+=" - ${STATUS_SUFFIX}"
+        fi
+        if [[ -n "${EXTRA_TEXT}" ]]; then
+          text+=" - ${EXTRA_TEXT}"
+        fi
+        text+=" - ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+
+        payload=$(jq -n --arg text "$text" --arg channel "${SLACK_CHANNEL}"           'if $channel == "" then {text:$text} else {text:$text,channel:$channel} end')
+
+        if ! curl --fail --silent --show-error           -H 'Content-Type: application/json'           --data "$payload"           "${SLACK_WEBHOOK_URL}"; then
+          echo "Slack notification failed; continuing without failing the workflow." >&2
+        fi

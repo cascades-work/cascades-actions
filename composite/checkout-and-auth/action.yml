@@ -1,0 +1,62 @@
+name: Checkout and authenticate
+description: Create a GitHub App token and check out an authorized repository
+
+inputs:
+  gh-app-id:
+    description: GitHub App ID
+    required: true
+  gh-app-private-key:
+    description: GitHub App private key
+    required: true
+  repository:
+    description: Repository in owner/name form
+    required: true
+  path:
+    description: Checkout path
+    required: false
+    default: ""
+  ref:
+    description: Git ref to check out
+    required: false
+    default: main
+
+outputs:
+  token:
+    description: GitHub App installation token
+    value: ${{ steps.app-token.outputs.token }}
+
+runs:
+  using: composite
+  steps:
+    - name: Parse target repository
+      id: target
+      shell: bash
+      env:
+        TARGET_REPOSITORY: ${{ inputs.repository }}
+      run: |
+        set -euo pipefail
+        owner="${TARGET_REPOSITORY%%/*}"
+        name="${TARGET_REPOSITORY#*/}"
+        if [[ -z "$owner" || -z "$name" || "$owner" == "$name" ]]; then
+          echo "repository must be in owner/name form" >&2
+          exit 1
+        fi
+        echo "owner=$owner" >> "$GITHUB_OUTPUT"
+        echo "name=$name" >> "$GITHUB_OUTPUT"
+
+    - name: Generate GitHub App token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ steps.target.outputs.owner }}
+        repositories: ${{ steps.target.outputs.name }}
+
+    - name: Checkout target repository
+      uses: actions/checkout@v6
+      with:
+        repository: ${{ inputs.repository }}
+        ref: ${{ inputs.ref }}
+        token: ${{ steps.app-token.outputs.token }}
+        path: ${{ inputs.path }}
