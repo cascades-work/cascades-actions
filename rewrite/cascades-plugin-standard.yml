@@ -1,0 +1,181 @@
+---
+type: specs.openrewrite.org/v1beta/recipe
+name: io.cascades.rewrite.PluginBuildStandard
+displayName: Standardize Cascades plugin Gradle builds
+description: |
+  Normalizes Cascades plugin repositories onto Gradle 9.6, enables build/cache
+  optimizations, moves dependency versions into a catalog, removes redundant
+  BOM-managed versions, and replaces repeated repository/Java/test setup with
+  the generated io.cascades.plugin-conventions buildSrc convention plugin.
+recipeList:
+  - org.openrewrite.gradle.GradleBestPractices
+  - org.openrewrite.gradle.AddProperty:
+      key: org.gradle.configuration-cache
+      value: "true"
+      overwrite: true
+      filePattern: gradle.properties
+  - org.openrewrite.gradle.MigrateDependenciesToVersionCatalog
+  - org.openrewrite.gradle.RemoveRedundantDependencyVersions
+  - org.openrewrite.gradle.UpdateGradleWrapper:
+      version: "9.6"
+      distribution: bin
+      addIfMissing: true
+
+  # Local convention plugin: no external plugin registry/auth is needed.
+  - org.openrewrite.text.CreateTextFile:
+      relativeFileName: buildSrc/build.gradle
+      overwriteExisting: true
+      fileContents: |
+        plugins {
+            id 'groovy-gradle-plugin'
+        }
+
+        repositories {
+            gradlePluginPortal()
+            mavenCentral()
+        }
+  - org.openrewrite.text.CreateTextFile:
+      relativeFileName: buildSrc/src/main/groovy/io.cascades.plugin-conventions.gradle
+      overwriteExisting: true
+      fileContents: |
+        import org.gradle.api.credentials.HttpHeaderCredentials
+        import org.gradle.authentication.http.HttpHeaderAuthentication
+
+        plugins {
+            id 'java-library'
+            id 'jacoco'
+        }
+
+        repositories {
+            mavenCentral()
+
+            def glToken = System.getenv("CI_JOB_TOKEN") ?: System.getenv("GITLAB_TOKEN") ?: findProperty("gitlabToken")
+            def glUrl = System.getenv("GITLAB_PACKAGES_URL") ?: "https://git.noirstack.com/api/v4/projects/7/packages/maven"
+            if (glToken) {
+                maven {
+                    name = "CascadesGitLabPackages"
+                    url = uri(glUrl)
+                    credentials(HttpHeaderCredentials) {
+                        name = System.getenv("CI_JOB_TOKEN") ? "Job-Token" : "Private-Token"
+                        value = glToken
+                    }
+                    authentication {
+                        header(HttpHeaderAuthentication)
+                    }
+                }
+            }
+
+            def gprKey = System.getenv("GITHUB_TOKEN") ?: System.getenv("GPR_TOKEN") ?: findProperty("gpr.key")
+            def gprUser = System.getenv("GITHUB_ACTOR") ?: System.getenv("GPR_USER") ?: (findProperty("gpr.user") ?: "github")
+            def gitlabOnly = (System.getenv("CASCADES_GITLAB_ONLY") ?: "false").toBoolean()
+            if (gprKey && !gitlabOnly) {
+                maven {
+                    name = "CascadesGitHubPackages"
+                    url = uri(System.getenv("GITHUB_PACKAGES_URL") ?: "https://maven.pkg.github.com/cascades-work/cascades")
+                    credentials {
+                        username = gprUser
+                        password = gprKey
+                    }
+                }
+            }
+
+            def requirePublished = (System.getenv("CASCADES_REQUIRE_GITHUB_PACKAGES") ?: "false").toBoolean()
+            if (!requirePublished) {
+                mavenLocal()
+            }
+        }
+
+        java {
+            toolchain {
+                languageVersion = JavaLanguageVersion.of(25)
+            }
+        }
+
+        tasks.withType(JavaCompile).configureEach {
+            options.encoding = "UTF-8"
+            options.compilerArgs.add("-parameters")
+        }
+
+        tasks.withType(Test).configureEach {
+            useJUnitPlatform()
+            finalizedBy(tasks.named("jacocoTestReport"))
+        }
+
+        tasks.named("jacocoTestReport") {
+            dependsOn(tasks.withType(Test))
+            reports {
+                xml.required.set(true)
+            }
+        }
+
+  # Remove root build.gradle setup now supplied by the convention plugin.
+  # Text recipes are intentionally last because they convert Gradle LSTs to text.
+  - org.openrewrite.text.FindAndReplace:
+      find: "(?ms)^repositories\\s*\\{.*?^\\}\\s*\\n\\s*(?=final targetJavaVersion)"
+      replace: ""
+      regex: true
+      caseSensitive: true
+      multiline: true
+      dotAll: true
+      filePattern: build.gradle
+  - org.openrewrite.text.FindAndReplace:
+      find: "(?ms)^final targetJavaVersion\\s*=.*?^\\}\\s*\\n\\s*(?=group\\s)"
+      replace: ""
+      regex: true
+      caseSensitive: true
+      multiline: true
+      dotAll: true
+      filePattern: build.gradle
+  - org.openrewrite.text.FindAndReplace:
+      find: "(?m)^\\s*id [\"']java-library[\"']\\s*$"
+      replace: ""
+      regex: true
+      caseSensitive: true
+      multiline: true
+      filePattern: build.gradle
+  - org.openrewrite.text.FindAndReplace:
+      find: "(?m)^\\s*id [\"']jacoco[\"']\\s*$"
+      replace: ""
+      regex: true
+      caseSensitive: true
+      multiline: true
+      filePattern: build.gradle
+  - org.openrewrite.text.FindAndReplace:
+      find: "(?m)^plugins\\s*\\{\\s*$"
+      replace: "plugins {\n    id 'io.cascades.plugin-conventions'"
+      regex: true
+      caseSensitive: true
+      multiline: true
+      filePattern: build.gradle
+  - org.openrewrite.text.FindAndReplace:
+      find: "(?ms)^tasks\\.withType\\(JavaCompile\\)\\s*\\{.*?^\\}\\s*"
+      replace: ""
+      regex: true
+      caseSensitive: true
+      multiline: true
+      dotAll: true
+      filePattern: build.gradle
+  - org.openrewrite.text.FindAndReplace:
+      find: "(?ms)^test\\s*\\{\\s*useJUnitPlatform\\(\\)\\s*\\}\\s*"
+      replace: ""
+      regex: true
+      caseSensitive: true
+      multiline: true
+      dotAll: true
+      filePattern: build.gradle
+  - org.openrewrite.text.FindAndReplace:
+      find: "(?ms)^test\\s*\\{\\s*finalizedBy\\s+jacocoTestReport\\s*\\}\\s*"
+      replace: ""
+      regex: true
+      caseSensitive: true
+      multiline: true
+      dotAll: true
+      filePattern: build.gradle
+  - org.openrewrite.text.FindAndReplace:
+      find: "(?ms)^jacocoTestReport\\s*\\{\\s*dependsOn\\s+test\\s*reports\\s*\\{\\s*xml\\.required\\.set\\(true\\)\\s*\\}\\s*\\}\\s*"
+      replace: ""
+      regex: true
+      caseSensitive: true
+      multiline: true
+      dotAll: true
+      filePattern: build.gradle
