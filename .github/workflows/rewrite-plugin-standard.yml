@@ -1,0 +1,121 @@
+name: Rewrite plugin to Gradle standard
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: Target plugin repository (owner/name)
+        required: true
+        type: string
+      apply:
+        description: Push a migration branch and open/update a PR
+        required: true
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      repository:
+        required: true
+        type: string
+      apply:
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      CASCADES_REWRITE_TOKEN:
+        required: true
+      CODE_GENOME_USERNAME:
+        required: true
+      CODE_GENOME_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  rewrite:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.CASCADES_REWRITE_TOKEN }}
+      CODE_GENOME_USERNAME: ${{ secrets.CODE_GENOME_USERNAME }}
+      CODE_GENOME_TOKEN: ${{ secrets.CODE_GENOME_TOKEN }}
+      CASCADES_REWRITE_CONFIG: ${{ github.workspace }}/tooling/rewrite/cascades-plugin-standard.yml
+    steps:
+      - name: Validate migration credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}" || { echo "CASCADES_REWRITE_TOKEN is required"; exit 1; }
+          test -n "${CODE_GENOME_USERNAME:-}" || { echo "CODE_GENOME_USERNAME is required"; exit 1; }
+          test -n "${CODE_GENOME_TOKEN:-}" || { echo "CODE_GENOME_TOKEN is required"; exit 1; }
+
+      - name: Checkout migration tooling
+        uses: actions/checkout@v6
+        with:
+          path: tooling
+
+      - name: Checkout target plugin
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ inputs.repository }}
+          token: ${{ secrets.CASCADES_REWRITE_TOKEN }}
+          path: target
+          fetch-depth: 0
+
+      - name: Set up Java 25
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Apply Cascades OpenRewrite standard
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace             --init-script "${GITHUB_WORKSPACE}/tooling/rewrite/init.gradle"             rewriteRun
+
+      - name: Validate migrated build
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew --no-daemon --stacktrace check
+
+      - name: Show migration diff
+        working-directory: target
+        shell: bash
+        run: git status --short && git diff --stat && git diff
+
+      - name: Open migration pull request
+        if: inputs.apply
+        working-directory: target
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$(git status --porcelain)" ]]; then
+            echo "Repository already conforms to the plugin build standard."
+            exit 0
+          fi
+
+          repo="${{ inputs.repository }}"
+          base="$(gh repo view "$repo" --json defaultBranchRef --jq '.defaultBranchRef.name')"
+          branch="automation/plugin-build-standard"
+
+          git config user.name "cascades-work automation"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add -A
+          git commit -m "build: standardize plugin Gradle configuration"
+          git push --force-with-lease origin "$branch"
+
+          existing="$(gh pr list --repo "$repo" --head "$branch" --base "$base" --json number --jq '.[0].number // empty')"
+          if [[ -n "$existing" ]]; then
+            echo "Updated existing PR #$existing"
+          else
+            gh pr create               --repo "$repo"               --head "$branch"               --base "$base"               --title "build: standardize plugin Gradle configuration"               --body "Applies the canonical Cascades OpenRewrite plugin-build standard: Gradle cache/parallel/configuration cache, Gradle 9.6, version catalogs, redundant-version cleanup, and the shared io.cascades.plugin-conventions build logic. The migrated build passed ./gradlew check before this PR was opened."
+          fi
