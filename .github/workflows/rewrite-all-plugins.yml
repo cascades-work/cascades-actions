@@ -1,0 +1,45 @@
+name: Rewrite all Cascades plugins
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Push migration branches and open PRs after successful validation
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        repository:
+          - cascades-work/cascades-plugin-aws
+          - cascades-work/cascades-plugin-azure
+          - cascades-work/cascades-plugin-algolia
+          - cascades-work/cascades-plugin-clevercloud
+          - cascades-work/cascades-plugin-soda
+          - cascades-work/cascades-plugin-spark
+          - cascades-work/cascades-plugin-digitalocean
+          - cascades-work/cascades-plugin-figma
+          - cascades-work/cascades-plugin-git
+          - cascades-work/cascades-plugin-gitlab
+          - cascades-work/cascades-plugin-jira
+          - cascades-work/cascades-plugin-linear
+          - cascades-work/cascades-plugin-n8n
+          - cascades-work/cascades-plugin-ollama
+          - cascades-work/cascades-plugin-scylladb
+          - cascades-work/cascades-plugin-typesense
+    uses: ./.github/workflows/rewrite-plugin-standard.yml
+    with:
+      repository: ${{ matrix.repository }}
+      apply: ${{ inputs.apply }}
+    secrets:
+      CASCADES_REWRITE_TOKEN: ${{ secrets.CASCADES_REWRITE_TOKEN }}
+      CODE_GENOME_USERNAME: ${{ secrets.CODE_GENOME_USERNAME }}
+      CODE_GENOME_TOKEN: ${{ secrets.CODE_GENOME_TOKEN }}
