@@ -1,0 +1,84 @@
+# ==============================================================================
+# Release Cascades Plugin
+#
+# This action handles manual release preparation (version bump, tag, branch).
+# When the tag (e.g. v1.2.0) is pushed, it automatically triggers main.yml,
+# which runs the full CI/CD pipeline via plugins.yml (build, publish, release).
+#
+# The two workflows are complementary:
+#   - release.yml = prepare (manual or CI-triggered release)
+#   - main.yml    = execute (build, publish, release)
+# ==============================================================================
+
+name: Release Cascades Plugin
+description: "Release logic for Cascades plugins (MAJOR, MINOR, PATCH, HOTFIX)"
+
+inputs:
+  gh-app-id:
+    required: true
+    description: GitHub App Client ID (pass secrets.GH_BOT_APP_ID from the caller workflow).
+  gh-app-private-key:
+    required: true
+    description: GitHub App private key (pass secrets.GH_BOT_PRIVATE_KEY from the caller workflow).
+  releaseVersion:
+    required: true
+    description: "Release version (e.g. 1.0.0, 1.3.0 or 1.4.2)"
+  nextVersion:
+    required: false
+    description: "Next version (e.g. 1.4.0-SNAPSHOT). If omitted, a PATCH release is performed."
+  cascadesVersion:
+    required: true
+    description: "Target Cascades core version (e.g. 1.1.0). Will override cascadesVersion in gradle.properties if set, else uses current cascadesVersion from main branch."
+  dryRun:
+    required: false
+    default: "false"
+    description: "If true, simulate the release without pushing or tagging and log the actions"
+  commitsList:
+    required: false
+    description: "(ONLY FOR HOTFIXES) Comma-separated list of commit SHA1s to cherry-pick for a hotfix release (e.g. abc123,def456). If provided, release.sh runs in hotfix mode."
+
+runs:
+  using: composite
+  steps:
+    - name: Configure Git
+      shell: bash
+      run: |
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+
+    - id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        app-id: ${{ inputs.gh-app-id }}
+        private-key: ${{ inputs.gh-app-private-key }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        submodules: true
+        token: ${{ steps.app-token.outputs.token }}
+
+    - name: Set up Java
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: "25"
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Run Release
+      shell: bash
+      env:
+        GITHUB_PAT: ${{ steps.app-token.outputs.token }}
+      run: |
+        chmod +x "${{ github.action_path }}/release.sh"
+        "${{ github.action_path }}/release.sh" \
+          "${{ inputs.releaseVersion }}" \
+          "${{ inputs.nextVersion }}" \
+          "${{ inputs.cascadesVersion }}" \
+          "${{ inputs.dryRun }}" \
+          "${{ inputs.commitsList }}"
