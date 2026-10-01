@@ -37,6 +37,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Start test service containers
+        if: hashFiles('docker-compose-ci.yml') != ''
+        run: docker compose -f docker-compose-ci.yml up -d
+
       - name: Set up Java
         uses: actions/setup-java@v5
         with:
