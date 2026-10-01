@@ -28,9 +28,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GITHUB_PACKAGES_URL: https://maven.pkg.github.com/cascades-work/cascades
-      GITHUB_ACTOR: ${{ github.actor }}
-      GITHUB_TOKEN: ${{ secrets.GPR_TOKEN || github.token }}
-      GPR_TOKEN: ${{ secrets.GPR_TOKEN || github.token }}
+      GITHUB_ACTOR: no1rstack
+      GITHUB_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
+      GH_TOKEN: ${{ secrets.GH_TOKEN || github.token }}
       GITLAB_PACKAGES_URL: https://git.noirstack.com/api/v4/projects/7/packages/maven
       GITLAB_TOKEN: ${{ secrets.GITLAB_PACKAGES_TOKEN || secrets.GITLAB_TOKEN }}
     steps:
