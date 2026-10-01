@@ -8,15 +8,12 @@
 
 ## List of repositories
 
-This repository reference all the Cascades Actions
+This repository references the Cascades Actions.
 
 | Link                                                                                                     | Description                             |
-| ---------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
-| [deploy-flows-action-v2](https://github.com/cascades-work/cascades/deploy-flows-action-v2)                             | Action to deploy flows.                  |
-| [deploy-namespace-files-action](https://github.com/cascades-work/cascades/deploy-namespace-files-action)               | Action to deploy namespace files.        |
-| [validate-flows-action-v2](https://github.com/cascades-work/cascades/validate-flows-action-v2)                         | Action to validate flows before deploying. |
-
-Superseded, now-deprecated repos: [deploy-flows-action](https://github.com/cascades-work/cascades/deploy-flows-action), [deploy-action](https://github.com/cascades-work/cascades/deploy-action), [validate-action](https://github.com/cascades-work/cascades/validate-action).
+| -------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| [cascades-deploy-namespace-files-action](https://github.com/cascades-work/cascades-deploy-namespace-files-action) | Action to deploy namespace files.        |
+| [cascades-validate-flows-action](https://github.com/cascades-work/cascades-validate-flows-action)         | Action to validate flows before deploying. |
 
 ## What is Cascades?
 
